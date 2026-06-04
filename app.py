@@ -14,7 +14,7 @@ original_completion = litellm.completion
 def safe_completion(*args, **kwargs):
     if "extra_body" in kwargs and isinstance(kwargs["extra_body"], dict):
         kwargs["extra_body"].pop("cache_breakpoint", None)
-        if not kwargs["extra_body"]:  # Clean up if empty
+        if not kwargs["extra_body"]:
             kwargs.pop("extra_body")
             
     if "messages" in kwargs and isinstance(kwargs["messages"], list):
@@ -31,124 +31,141 @@ litellm.completion = safe_completion
 # --- STREAMLIT UI SETUP ---
 st.set_page_config(page_title="AI Agent Content Creator", page_icon="✍️", layout="centered")
 
-st.title("✍️ Multi-Agent Content Generation Crew")
-st.write("Input a topic below to watch a crew of specialized AI agents plan, write, and edit a blog post for you.")
+st.title("✍️ Multi-Agent Dynamic Content Crew")
+st.write("Input any topic. Specialized agents will plan, write, edit, and dynamically add contextual resource links.")
 
 # 4. Handle API Key Securely
-# Looks for environmental variables (for production) or sidebar input (for quick testing)
 groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input("Enter Groq API Key", type="password")
 
 if not groq_api_key:
     st.info("🔑 Please enter your Groq API Key in the sidebar or set the environment variable to begin.")
     st.stop()
 
-# Instantiate the LLM
-groq_llm = LLM(
+# --- TARGETED DUAL MODEL INSTANTIATION ---
+# Lightweight, high-token-allowance model for the upfront tracking & structural link formatting tasks
+fast_llm = LLM(
+    model="groq/llama-3.1-8b-instant",
+    api_key=groq_api_key,
+    temperature=0.2
+)
+
+# High-intelligence model reserved strictly for pure writing and editing tasks
+smart_llm = LLM(
     model="groq/llama-3.3-70b-versatile",
     api_key=groq_api_key,
     temperature=0.7
 )
 
 # 5. User Input
-topic = st.text_input("What topic would you like the agents to write about?", placeholder="e.g., Artificial Intelligence, Quantum Computing")
+topic = st.text_input("What topic would you like the agents to write about?", placeholder="e.g., Data Architecture Strategies, Travelling to Tokyo")
 
 # 6. Execution Trigger
 if st.button("Launch Crew Execution", type="primary"):
     if not topic.strip():
         st.warning("Please provide a valid topic.")
     else:
-        # Spinner visualizes execution status to user
-        with st.spinner(f"🕵️‍♂️ Agents are working hard on planning, writing, and editing your post about '{topic}'... Please wait."):
+        with st.spinner(f"🕵️‍♂️ Agents are managing tokens and designing your linked article for '{topic}'..."):
             try:
-                # Define Agents
+                # --- AGENTS ---
                 planner = Agent(
                     role="Content planner",
-                    goal="Plan engaging and factually accurate content on {topic}",
+                    goal="Plan engaging and factually accurate content architecture on {topic}",
                     backstory=(
-                        "You're working on a blog article about the topic: {topic}. "
-                        "You collect information that helps the audience learn something and make informed decisions."
+                        "You're organizing an article on {topic}. "
+                        "You extract core structural points and note high-profile organizations or authoritative agencies related to the field."
                     ),
                     allow_delegation=False,
                     verbose=True,
-                    llm=groq_llm
+                    llm=fast_llm # Uses faster model to preserve token capacity
                 )
 
                 writer = Agent(
                     role="Content Writer",
                     goal="Write insightful and factually accurate opinion pieces about the topic: {topic}.",
-                    backstory=(
-                        "You're working on writing a new opinion piece about the topic: {topic}."
-                    ),
+                    backstory="You're writing a premium, multi-paragraph opinion or guide piece about {topic}.",
                     allow_delegation=False,
                     verbose=True,
-                    llm=groq_llm
+                    llm=smart_llm # Reserved for the heavy writing assignment
                 )
 
                 editor = Agent(
                     role="Editor",
-                    goal="Edit a given blog post to align with the writing style of the organization.",
+                    goal="Edit a given blog post to align with professional formatting guidelines.",
+                    backstory="You adjust syntax, tone, and correct mechanical bugs from drafts.",
+                    allow_delegation=False,
+                    verbose=True,
+                    llm=smart_llm # Reserved for styling polish
+                )
+
+                linker = Agent(
+                    role="Digital Link Optimizer",
+                    goal="Read a completed text draft and format references to primary brands, official agencies, and key platforms into standard Markdown links dynamically.",
                     backstory=(
-                        "You are an editor who receives the blog post from the Content Writer."
+                        "You possess deep domain awareness. You map well-known tools, official documentation bodies, "
+                        "or primary corporations mentioned in text directly into valid Markdown hyperlinks without changing text structure."
                     ),
                     allow_delegation=False,
                     verbose=True,
-                    llm=groq_llm
+                    llm=fast_llm # Uses the fast model to avoid rate limiting on formatting loops
                 )
 
-                # Define Tasks
+                # --- TASKS ---
                 plan = Task(
                     description=(
-                        "1. Prioritize the latest trends, key players, and noteworthy news on {topic}.\n" 
-                        "2. Identify target audience, considering their interests and pain points.\n"
-                        "3. Develop a detailed content outline including an introduction, key points, and a call to action.\n" 
-                        "4. Include SEO keywords and relevant data or sources."
+                        "1. Identify trends and key players on {topic}.\n"
+                        "2. Create a clean article outline with clear structural requirements."
                     ),
-                    expected_output="A comprehensive content plan document with an outline, audience analysis, SEO keywords, and resources.",
+                    expected_output="A clean content plan document with an outline and key domain terms.",
                     agent=planner,
                 )
 
                 write = Task(
                     description=(
-                        "1. Use the content plan to create a compelling blog post on {topic}.\n"
-                        "2. Incorporate SEO keywords naturally.\n"
-                        "3. Ensure sections and subtitles are named in an engaging manner.\n"
-                        "4. Structure the post with an engaging introduction, insightful body, and summarizing conclusion.\n"
-                        "5. Proofread for grammatical errors and alignment with the brand's voice."
+                        "1. Convert the content plan into an engaging article on {topic}.\n"
+                        "2. Structure it cleanly using markdown headers."
                     ),
-                    expected_output="A well-written blog post in markdown format, ready for publication, where each section has 2 or 3 paragraphs.",
+                    expected_output="A structured blog post in markdown format where each section has 2 or 3 paragraphs.",
                     agent=writer,
                 )
 
                 edit = Task(
-                    description="Review and refine the blog post written by the writer. Ensure it meets journalistic standards and tone.",
-                    expected_output="A polished, final version of the blog post in markdown format.",
+                    description="Review and refine the blog post. Ensure it meets journalistic standards and tone.",
+                    expected_output="A polished draft of the blog post in markdown format.",
                     agent=editor
                 )
 
-                # Assemble Crew
-                crew = Crew(
-                    agents=[planner, writer, editor],
-                    tasks=[plan, write, edit],
-                    verbose=True
+                enrich_links = Task(
+                    description=(
+                        "Carefully read the edited text. Locate any major official platforms, governing departments, dominant corporate entities, "
+                        "or industry-standard applications referenced. Seamlessly convert those exact references into clickable Markdown links "
+                        "(e.g., if it mentions Python documentation, convert it to [Python Documentation](https://www.python.org)). "
+                        "Return the complete, final article with these links embedded."
+                    ),
+                    expected_output="The complete, finalized markdown blog post containing automated contextual navigation hyperlinks.",
+                    agent=linker
                 )
 
-                # Kickoff execution
+                # --- ASSEMBLE CREW WITH RATE RECOVERY ---
+                crew = Crew(
+                    agents=[planner, writer, editor, linker],
+                    tasks=[plan, write, edit, enrich_links],
+                    verbose=True,
+                    max_rpm=2 # Enforces a deliberate multi-second pause to let the Groq token bucket replenish
+                )
+
+                # Run Crew
                 result = crew.kickoff(inputs={"topic": topic})
-                
-                # Retrieve raw string output compatibility from CrewOutput object
                 final_text = result.raw if hasattr(result, 'raw') else str(result)
                 
-                # Display Results
-                st.success("🎉 Crew tasks completed successfully!")
-                
-                st.subheader("📝 Finished Blog Post")
+                # --- SAFETY FALLBACK DISPLAY ---
+                st.success("🎉 Process complete!")
+                st.subheader("📝 Finished Blog Post with Dynamic Links")
                 st.markdown(final_text)
                 
-                # Download Button for the file
                 st.download_button(
-                    label="📥 Download Article as Markdown",
+                    label="📥 Download Enriched Article",
                     data=final_text,
-                    file_name=f"{topic.lower().replace(' ', '_')}_article.md",
+                    file_name=f"{topic.lower().replace(' ', '_')}_linked_article.md",
                     mime="text/markdown"
                 )
 
