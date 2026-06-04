@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import time
 import warnings
 import litellm
 from crewai import Agent, Task, Crew, LLM
@@ -7,10 +8,9 @@ from crewai import Agent, Task, Crew, LLM
 # Disable warnings
 warnings.filterwarnings("ignore")
 
-# 1. Store the original LiteLLM completion function
+# 1. Global Monkey Patch for LiteLLM to prevent structural rejections
 original_completion = litellm.completion
 
-# 2. Define a clean wrapper to intercept and strip out 'cache_breakpoint'
 def safe_completion(*args, **kwargs):
     if "extra_body" in kwargs and isinstance(kwargs["extra_body"], dict):
         kwargs["extra_body"].pop("cache_breakpoint", None)
@@ -25,149 +25,162 @@ def safe_completion(*args, **kwargs):
     kwargs.pop("cache_breakpoint", None)
     return original_completion(*args, **kwargs)
 
-# 3. Apply the global monkey patch
 litellm.completion = safe_completion
 
-# --- STREAMLIT UI SETUP ---
+# --- STREAMLIT UI ---
 st.set_page_config(page_title="AI Agent Content Creator", page_icon="✍️", layout="centered")
 
-st.title("✍️ Multi-Agent Dynamic Content Crew")
-st.write("Input any topic. Specialized agents will plan, write, edit, and dynamically add contextual resource links.")
+st.title("✍️ Multi-Agent Content Generation Crew")
+st.write("Input a topic below to watch your specialized AI agents plan, write, and edit articles consecutively.")
 
-# 4. Handle API Key Securely
+# Secure API Key Setup
 groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input("Enter Groq API Key", type="password")
 
 if not groq_api_key:
     st.info("🔑 Please enter your Groq API Key in the sidebar or set the environment variable to begin.")
     st.stop()
 
-# --- TARGETED DUAL MODEL INSTANTIATION ---
-# Lightweight, high-token-allowance model for the upfront tracking & structural link formatting tasks
+# --- MODEL SELECTION ---
+# We use Llama 3.1 8B for discovery and structural linking to conserve token headroom
 fast_llm = LLM(
     model="groq/llama-3.1-8b-instant",
     api_key=groq_api_key,
     temperature=0.2
 )
 
-# High-intelligence model reserved strictly for pure writing and editing tasks
+# We reserve the heavy-duty 70B model ONLY for premium writing and polishing
 smart_llm = LLM(
     model="groq/llama-3.3-70b-versatile",
     api_key=groq_api_key,
     temperature=0.7
 )
 
-# 5. User Input
-topic = st.text_input("What topic would you like the agents to write about?", placeholder="e.g., Data Architecture Strategies, Travelling to Tokyo")
+topic = st.text_input("What topic would you like the agents to write about?", placeholder="e.g., Quantum Computing, Stock Market Basics")
 
-# 6. Execution Trigger
 if st.button("Launch Crew Execution", type="primary"):
     if not topic.strip():
         st.warning("Please provide a valid topic.")
     else:
-        with st.spinner(f"🕵️‍♂️ Agents are managing tokens and designing your linked article for '{topic}'..."):
+        # Create clear status placeholders for the user during cool-off delays
+        status_box = st.empty()
+        
+        # Track attempts for consecutive generation protection
+        max_retries = 3
+        retry_delay = 5  # Base delay in seconds
+        
+        for attempt in range(max_retries):
+            status_box.info(f"🚀 Initializing agents for '{topic}' (Attempt {attempt + 1}/{max_retries})...")
+            
             try:
                 # --- AGENTS ---
                 planner = Agent(
                     role="Content planner",
                     goal="Plan engaging and factually accurate content architecture on {topic}",
-                    backstory=(
-                        "You're organizing an article on {topic}. "
-                        "You extract core structural points and note high-profile organizations or authoritative agencies related to the field."
-                    ),
+                    backstory="You extract core structural points and note high-profile sub-concepts.",
                     allow_delegation=False,
                     verbose=True,
-                    llm=fast_llm # Uses faster model to preserve token capacity
+                    llm=fast_llm
                 )
 
                 writer = Agent(
                     role="Content Writer",
-                    goal="Write insightful and factually accurate opinion pieces about the topic: {topic}.",
-                    backstory="You're writing a premium, multi-paragraph opinion or guide piece about {topic}.",
+                    goal="Write insightful opinion pieces about the topic: {topic}.",
+                    backstory="You write multi-paragraph editorial copy.",
                     allow_delegation=False,
                     verbose=True,
-                    llm=smart_llm # Reserved for the heavy writing assignment
+                    llm=smart_llm
                 )
 
                 editor = Agent(
                     role="Editor",
-                    goal="Edit a given blog post to align with professional formatting guidelines.",
-                    backstory="You adjust syntax, tone, and correct mechanical bugs from drafts.",
+                    goal="Edit a given blog post to align with professional guidelines.",
+                    backstory="You adjust syntax and correct technical pacing bugs from drafts.",
                     allow_delegation=False,
                     verbose=True,
-                    llm=smart_llm # Reserved for styling polish
+                    llm=smart_llm
                 )
 
                 linker = Agent(
                     role="Digital Link Optimizer",
-                    goal="Read a completed text draft and format references to primary brands, official agencies, and key platforms into standard Markdown links dynamically.",
-                    backstory=(
-                        "You possess deep domain awareness. You map well-known tools, official documentation bodies, "
-                        "or primary corporations mentioned in text directly into valid Markdown hyperlinks without changing text structure."
-                    ),
+                    goal="Read a completed text draft and format references into standard Markdown links dynamically.",
+                    backstory="You convert high-level references into standard Markdown hyperlinks cleanly.",
                     allow_delegation=False,
                     verbose=True,
-                    llm=fast_llm # Uses the fast model to avoid rate limiting on formatting loops
+                    llm=fast_llm
                 )
 
                 # --- TASKS ---
                 plan = Task(
-                    description=(
-                        "1. Identify trends and key players on {topic}.\n"
-                        "2. Create a clean article outline with clear structural requirements."
-                    ),
-                    expected_output="A clean content plan document with an outline and key domain terms.",
+                    description="1. Identify trends on {topic}.\n2. Create a clean article outline.",
+                    expected_output="An outline document.",
                     agent=planner,
                 )
 
                 write = Task(
-                    description=(
-                        "1. Convert the content plan into an engaging article on {topic}.\n"
-                        "2. Structure it cleanly using markdown headers."
-                    ),
-                    expected_output="A structured blog post in markdown format where each section has 2 or 3 paragraphs.",
+                    description="1. Convert the content plan into a blog post.\n2. Structure with markdown headers.",
+                    expected_output="A blog post in markdown format where each section has 2 or 3 paragraphs.",
                     agent=writer,
                 )
 
                 edit = Task(
-                    description="Review and refine the blog post. Ensure it meets journalistic standards and tone.",
-                    expected_output="A polished draft of the blog post in markdown format.",
+                    description="Review and refine the blog post written by the writer.",
+                    expected_output="A polished version of the blog post in markdown format.",
                     agent=editor
                 )
 
                 enrich_links = Task(
-                    description=(
-                        "Carefully read the edited text. Locate any major official platforms, governing departments, dominant corporate entities, "
-                        "or industry-standard applications referenced. Seamlessly convert those exact references into clickable Markdown links "
-                        "(e.g., if it mentions Python documentation, convert it to [Python Documentation](https://www.python.org)). "
-                        "Return the complete, final article with these links embedded."
-                    ),
-                    expected_output="The complete, finalized markdown blog post containing automated contextual navigation hyperlinks.",
+                    description="Locate official bodies or industry-standard platforms and add markdown links without altering core text.",
+                    expected_output="The complete markdown blog post containing navigation hyperlinks.",
                     agent=linker
                 )
 
-                # --- ASSEMBLE CREW WITH RATE RECOVERY ---
+                # --- CREW ASSEMBLY WITH MAX REQUEST PACING ---
                 crew = Crew(
                     agents=[planner, writer, editor, linker],
                     tasks=[plan, write, edit, enrich_links],
                     verbose=True,
-                    max_rpm=2 # Enforces a deliberate multi-second pause to let the Groq token bucket replenish
+                    max_rpm=1  # <-- Hard limit: Ensures actions stagger across a broader minute window
                 )
 
-                # Run Crew
+                # Execute
                 result = crew.kickoff(inputs={"topic": topic})
                 final_text = result.raw if hasattr(result, 'raw') else str(result)
                 
-                # --- SAFETY FALLBACK DISPLAY ---
-                st.success("🎉 Process complete!")
-                st.subheader("📝 Finished Blog Post with Dynamic Links")
+                # Success display
+                status_box.empty()
+                st.success("🎉 Article generated successfully without exceeding limits!")
+                st.subheader("📝 Finished Blog Post")
                 st.markdown(final_text)
                 
                 st.download_button(
-                    label="📥 Download Enriched Article",
+                    label="📥 Download Article",
                     data=final_text,
-                    file_name=f"{topic.lower().replace(' ', '_')}_linked_article.md",
+                    file_name=f"{topic.lower().replace(' ', '_')}_article.md",
                     mime="text/markdown"
                 )
-
+                break # Exit the retry loop upon successful execution
+                
             except Exception as e:
-                st.error(f"An error occurred during execution: {e}")
+                error_msg = str(e)
+                
+                # Check if it's a Rate Limit / Token threshold error
+                if "rate_limit_exceeded" in error_msg.lower() or "ratelimiterror" in error_msg.lower():
+                    # Check if Groq told us exactly how long to wait via their API response
+                    # If not specified, we exponentially back off (5s, 15s, etc.)
+                    wait_time = retry_delay * (attempt + 1) * 2
+                    if "try again in" in error_msg:
+                        try:
+                            # Try parsing the exact seconds out of Groq's error text (e.g., "try again in 3.27s")
+                            parts = error_msg.split("try again in ")
+                            wait_time = float(parts[1].split("s")[0]) + 1.5 # Add a tiny padding buffer
+                        except:
+                            pass
+                            
+                    status_box.warning(f"⏳ Groq rate limit threshold reached. Cooled down triggered: Waiting {wait_time:.2f} seconds before retrying...")
+                    time.sleep(wait_time)
+                else:
+                    # If it's a different code error, stop execution immediately to debug
+                    status_box.error(f"Execution Error: {e}")
+                    break
+        else:
+            status_box.error("❌ High traffic limit: Failed to execute after maximum cooling attempts. Please wait 1 minute before requesting another topic.")
