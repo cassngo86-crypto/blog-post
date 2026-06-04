@@ -7,10 +7,20 @@ from crewai import Agent, Task, Crew, LLM
 # 1. IMPORT THE SEARCH TOOL
 from crewai_tools import SerperDevTool
 from datetime import datetime
+from pydantic import BaseModel, Field
+from typing import List
 
 # Disable warnings
 warnings.filterwarnings("ignore")
 
+
+# Define the rigid structure your blog post must fulfill
+class StructuredArticle(BaseModel):
+    title: str = Field(description="The catchy, SEO-optimized title of the article.")
+    introduction: str = Field(description="The introductory section. Must include an embedded blockquote callout for a core metric or trend.")
+    comparative_table_markdown: str = Field(description="A fully formatted Markdown table comparing 3+ core entities (e.g., flight options, software tools, or architectural patterns) with descriptive context hyperlinks embedded inside the table cells.")
+    body_sections_markdown: str = Field(description="The main editorial content sections separated by clean markdown H3 headers. Each section must have 2-3 detailed paragraphs containing descriptive, context-anchored links.")
+    conclusion: str = Field(description="Summarizing wrap-up section and a clear call to action.")
 # Global Monkey Patch for LiteLLM to prevent structural rejections
 original_completion = litellm.completion
 
@@ -126,9 +136,7 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
         llm=fast_llm
     )
 
-    # --- TASKS ---
-    # --- TASKS WITH ANCHORED SEARCH CONTROLS ---
-    # --- TASKS WITH ADVANCED FORMATTING BLUEPRINTS ---
+   
     # --- TASKS WITH ANCHORED SEARCH CONTROLS & GROQ GUARDRAILS ---
     current_year = datetime.now().strftime("%Y")
 
@@ -178,7 +186,8 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
             "Keep the core markdown tables, blockquotes, and text completely unaltered."
         ),
         expected_output="The final markdown blog post containing highly descriptive, context-anchored navigation hyperlinks.",
-        agent=linker
+        agent=linker,
+        output_pydantic=StructuredArticle
     )
 
     # Assemble Crew with strict rate-limit protection
@@ -190,8 +199,27 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
     )
 
     # Kickoff the execution
+    # Execute the Crew
     result = crew.kickoff(inputs={"topic": topic})
-    return result.raw if hasattr(result, 'raw') else str(result)
+    
+    # Extract our strongly-typed Pydantic structure
+    article_data = result.pydantic
+    
+    # Assemble the pieces into a stunning, professional markdown layout
+    assembled_markdown = f"""# {article_data.title}
+
+### Introduction
+{article_data.introduction}
+
+### Comparative Overview & Key Resources
+{article_data.comparative_table_markdown}
+
+{article_data.body_sections_markdown}
+
+### Conclusion
+{article_data.conclusion}
+"""
+    return assembled_markdown
 
 
 # --- MAIN INTERFACE ---
@@ -209,21 +237,24 @@ if st.button("Launch Crew Execution", type="primary"):
         for attempt in range(max_retries):
             status_box.info(f"🕵️‍♂️ Fetching content for '{topic}' using a {tone} tone... (Checking Cache / Pacing Agents)")
             try:
-                # Call the cached helper function
+                # Call the cached helper function which now returns our beautifully structured layout
                 final_text = run_cached_crew(topic, tone, temperature, groq_api_key, serper_api_key)
                 
                 status_box.empty()
-                st.success("🎉 Article ready!")
+                st.success("🎉 Visually optimized article ready!")
                 st.subheader("📝 Generated Blog Post")
+                
+                # Render beautifully to screen with tables and blockquotes
                 st.markdown(final_text)
                 
                 st.download_button(
-                    label="📥 Download Enriched Article",
+                    label="📥 Download Production-Grade Article",
                     data=final_text,
-                    file_name=f"{topic.lower().replace(' ', '_')}_advanced.md",
+                    file_name=f"{topic.lower().replace(' ', '_')}_production.md",
                     mime="text/markdown"
                 )
                 break
+                
                 
             except Exception as e:
                 error_msg = str(e)
