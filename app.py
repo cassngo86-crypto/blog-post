@@ -129,19 +129,23 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
     # --- TASKS ---
     # --- TASKS WITH ANCHORED SEARCH CONTROLS ---
     # --- TASKS WITH ADVANCED FORMATTING BLUEPRINTS ---
+    # --- TASKS WITH ANCHORED SEARCH CONTROLS & GROQ GUARDRAILS ---
     current_year = datetime.now().strftime("%Y")
 
     plan_description = (
         f"1. Identify trends, structural shifts, and key authoritative entities on {{topic}}.\n"
         f"2. Create a clean article outline highlighting where comparative tables or metric callouts would maximize readability.\n"
         f"3. CRITICAL SEARCH RULE: When searching for data on {{topic}}, target the **current year ({current_year})**.\n"
-        f"   Always prioritize official documentation, primary source sites, and corporate/government announcements from {current_year}."
+        f"   Always prioritize official documentation, primary source sites, and corporate/government announcements from {current_year}.\n"
+        f"4. GROQ TOOL USE RULE: You must execute exactly ONE search query at a time. Do not attempt to call multiple functions or merge "
+        f"text notes directly into your tool invocation blocks. Wait for the response before executing another search."
     )
 
     plan = Task(
         description=plan_description,
         expected_output=f"An authoritative outline document with verified data notes from {current_year}.",
         agent=planner,
+        cache=False # <-- CRITICAL: Prevents Groq from choking on cached multi-tool formatting structures
     )
 
     write = Task(
