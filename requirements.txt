@@ -4,3 +4,4 @@ streamlit
 crewai-tools
 fpdf2
 python-docx
+fpdf2
