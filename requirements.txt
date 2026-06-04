@@ -1,3 +1,4 @@
 crewai>=0.30.0
 litellm
 streamlit
+crewai-tools

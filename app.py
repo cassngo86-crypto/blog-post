@@ -4,11 +4,13 @@ import time
 import warnings
 import litellm
 from crewai import Agent, Task, Crew, LLM
+# 1. IMPORT THE SEARCH TOOL
+from crewai_tools import SerperDevTool
 
 # Disable warnings
 warnings.filterwarnings("ignore")
 
-# 1. Global Monkey Patch for LiteLLM to prevent structural rejections
+# Global Monkey Patch for LiteLLM to prevent structural rejections
 original_completion = litellm.completion
 
 def safe_completion(*args, **kwargs):
@@ -27,160 +29,189 @@ def safe_completion(*args, **kwargs):
 
 litellm.completion = safe_completion
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="AI Agent Content Creator", page_icon="✍️", layout="centered")
+# --- STREAMLIT UI & CONFIGURATIONS ---
+st.set_page_config(page_title="Advanced AI Content Crew", page_icon="🚀", layout="centered")
 
-st.title("✍️ Multi-Agent Content Generation Crew")
-st.write("Input a topic below to watch your specialized AI agents plan, write, and edit articles consecutively.")
+st.title("🚀 Advanced Multi-Agent Content Crew")
+st.write("An enhanced system utilizing live web search, parameter tuning, and intelligent caching.")
 
-# Secure API Key Setup
-groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input("Enter Groq API Key", type="password")
+# --- SIDEBAR CONTROL PANEL ---
+st.sidebar.header("🔑 API Credentials")
+groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input("Groq API Key", type="password")
+serper_api_key = os.environ.get("SERPER_API_KEY") or st.sidebar.text_input("Serper API Key (For Live Search)", type="password")
+
+st.sidebar.markdown("---")
+st.sidebar.header("🎛️ Generation Settings (Enhancement 2)")
+
+# Dynamic Pacing Control
+tone = st.sidebar.selectbox(
+    "Select Writing Tone",
+    ["Professional", "Casual/Conversational", "Technical & Academic", "SEO-Optimized Marketing"]
+)
+
+temperature = st.sidebar.slider(
+    "LLM Creativity (Temperature)",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.7,
+    step=0.1,
+    help="Lower values are more deterministic and factual; higher values are more creative."
+)
 
 if not groq_api_key:
-    st.info("🔑 Please enter your Groq API Key in the sidebar or set the environment variable to begin.")
+    st.info("🔑 Please enter your Groq API Key in the sidebar to begin.")
     st.stop()
 
-# --- MODEL SELECTION ---
-# We use Llama 3.1 8B for discovery and structural linking to conserve token headroom
-fast_llm = LLM(
-    model="groq/llama-3.1-8b-instant",
-    api_key=groq_api_key,
-    temperature=0.2
-)
 
-# We reserve the heavy-duty 70B model ONLY for premium writing and polishing
-smart_llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
-    api_key=groq_api_key,
-    temperature=0.7
-)
+# --- CACHED CREW EXECUTION FUNCTION (Enhancement 3) ---
+# This decorator ensures identical topics + settings don't waste your Groq tokens.
+@st.cache_data(show_spinner=False)
+def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
+    
+    # Instantiate Search Tool if key is present
+    search_tool = None
+    if _serper_key:
+        os.environ["SERPER_API_KEY"] = _serper_key
+        search_tool = SerperDevTool()
 
-topic = st.text_input("What topic would you like the agents to write about?", placeholder="e.g., Quantum Computing, Stock Market Basics")
+    # Define LLMs with user-configured temperature
+    fast_llm = LLM(
+        model="groq/llama-3.1-8b-instant",
+        api_key=_groq_key,
+        temperature=temp_setting
+    )
+
+    smart_llm = LLM(
+        model="groq/llama-3.3-70b-versatile",
+        api_key=_groq_key,
+        temperature=temp_setting
+    )
+
+    # --- AGENTS (Dynamically tracking the chosen 'tone') ---
+    planner = Agent(
+        role="Content Research Planner",
+        goal=f"Plan factually accurate content architecture on {{topic}} using a {tone_setting} approach.",
+        backstory="You extract core structural points, note high-profile sub-concepts, and search for live, accurate data points.",
+        allow_delegation=False,
+        verbose=True,
+        llm=fast_llm,
+        tools=[search_tool] if search_tool else [] # Injects Live Search into the Planning phase
+    )
+
+    writer = Agent(
+        role="Content Writer",
+        goal=f"Write insightful articles about the topic: {{topic}} matching a {tone_setting} tone perfectly.",
+        backstory=f"You write premium, multi-paragraph copy. You maintain a strictly {tone_setting} narrative style.",
+        allow_delegation=False,
+        verbose=True,
+        llm=smart_llm
+    )
+
+    editor = Agent(
+        role="Editor",
+        goal="Edit a given blog post to align with professional guidelines and formatting rules.",
+        backstory=f"You adjust syntax, pacing, and verify the post strictly embodies a {tone_setting} delivery.",
+        allow_delegation=False,
+        verbose=True,
+        llm=smart_llm
+    )
+
+    linker = Agent(
+        role="Digital Link Optimizer",
+        goal="Read a completed text draft and format references into standard Markdown links dynamically.",
+        backstory="You convert high-level organizations, cities, or applications mentioned into valid hyperlinks.",
+        allow_delegation=False,
+        verbose=True,
+        llm=fast_llm
+    )
+
+    # --- TASKS ---
+    plan_description = "1. Identify trends and recent facts on {topic}.\n2. Create a clean article outline."
+    if search_tool:
+        plan_description += "\n3. Use your search tool to gather the latest real-time news or data on this topic."
+
+    plan = Task(
+        description=plan_description,
+        expected_output="An outline document with accompanying recent resource data notes.",
+        agent=planner,
+    )
+
+    write = Task(
+        description=f"1. Convert the content plan into a blog post.\n2. Structure with markdown headers in a {tone_setting} voice.",
+        expected_output="A comprehensive markdown blog post where each section contains 2 or 3 detailed paragraphs.",
+        agent=writer,
+    )
+
+    edit = Task(
+        description="Review and refine the blog post written by the writer for structural balance and grammar.",
+        expected_output="A polished version of the blog post in markdown format.",
+        agent=editor
+    )
+
+    enrich_links = Task(
+        description="Locate official bodies or industry-standard platforms mentioned and add markdown links without altering core text text.",
+        expected_output="The complete markdown blog post containing navigation hyperlinks.",
+        agent=linker
+    )
+
+    # Assemble Crew with strict rate-limit protection
+    crew = Crew(
+        agents=[planner, writer, editor, linker],
+        tasks=[plan, write, edit, enrich_links],
+        verbose=True,
+        max_rpm=1  
+    )
+
+    # Kickoff the execution
+    result = crew.kickoff(inputs={"topic": topic})
+    return result.raw if hasattr(result, 'raw') else str(result)
+
+
+# --- MAIN INTERFACE ---
+topic = st.text_input("What topic would you like the agents to handle today?", placeholder="e.g., Current Travel Trends Singapore to Tokyo")
 
 if st.button("Launch Crew Execution", type="primary"):
     if not topic.strip():
         st.warning("Please provide a valid topic.")
     else:
-        # Create clear status placeholders for the user during cool-off delays
         status_box = st.empty()
         
-        # Track attempts for consecutive generation protection
+        # We try 3 times to manage potential API cooldown limits
         max_retries = 3
-        retry_delay = 5  # Base delay in seconds
         
         for attempt in range(max_retries):
-            status_box.info(f"🚀 Initializing agents for '{topic}' (Attempt {attempt + 1}/{max_retries})...")
-            
+            status_box.info(f"🕵️‍♂️ Fetching content for '{topic}' using a {tone} tone... (Checking Cache / Pacing Agents)")
             try:
-                # --- AGENTS ---
-                planner = Agent(
-                    role="Content planner",
-                    goal="Plan engaging and factually accurate content architecture on {topic}",
-                    backstory="You extract core structural points and note high-profile sub-concepts.",
-                    allow_delegation=False,
-                    verbose=True,
-                    llm=fast_llm
-                )
-
-                writer = Agent(
-                    role="Content Writer",
-                    goal="Write insightful opinion pieces about the topic: {topic}.",
-                    backstory="You write multi-paragraph editorial copy.",
-                    allow_delegation=False,
-                    verbose=True,
-                    llm=smart_llm
-                )
-
-                editor = Agent(
-                    role="Editor",
-                    goal="Edit a given blog post to align with professional guidelines.",
-                    backstory="You adjust syntax and correct technical pacing bugs from drafts.",
-                    allow_delegation=False,
-                    verbose=True,
-                    llm=smart_llm
-                )
-
-                linker = Agent(
-                    role="Digital Link Optimizer",
-                    goal="Read a completed text draft and format references into standard Markdown links dynamically.",
-                    backstory="You convert high-level references into standard Markdown hyperlinks cleanly.",
-                    allow_delegation=False,
-                    verbose=True,
-                    llm=fast_llm
-                )
-
-                # --- TASKS ---
-                plan = Task(
-                    description="1. Identify trends on {topic}.\n2. Create a clean article outline.",
-                    expected_output="An outline document.",
-                    agent=planner,
-                )
-
-                write = Task(
-                    description="1. Convert the content plan into a blog post.\n2. Structure with markdown headers.",
-                    expected_output="A blog post in markdown format where each section has 2 or 3 paragraphs.",
-                    agent=writer,
-                )
-
-                edit = Task(
-                    description="Review and refine the blog post written by the writer.",
-                    expected_output="A polished version of the blog post in markdown format.",
-                    agent=editor
-                )
-
-                enrich_links = Task(
-                    description="Locate official bodies or industry-standard platforms and add markdown links without altering core text.",
-                    expected_output="The complete markdown blog post containing navigation hyperlinks.",
-                    agent=linker
-                )
-
-                # --- CREW ASSEMBLY WITH MAX REQUEST PACING ---
-                crew = Crew(
-                    agents=[planner, writer, editor, linker],
-                    tasks=[plan, write, edit, enrich_links],
-                    verbose=True,
-                    max_rpm=1  # <-- Hard limit: Ensures actions stagger across a broader minute window
-                )
-
-                # Execute
-                result = crew.kickoff(inputs={"topic": topic})
-                final_text = result.raw if hasattr(result, 'raw') else str(result)
+                # Call the cached helper function
+                final_text = run_cached_crew(topic, tone, temperature, groq_api_key, serper_api_key)
                 
-                # Success display
                 status_box.empty()
-                st.success("🎉 Article generated successfully without exceeding limits!")
-                st.subheader("📝 Finished Blog Post")
+                st.success("🎉 Article ready!")
+                st.subheader("📝 Generated Blog Post")
                 st.markdown(final_text)
                 
                 st.download_button(
-                    label="📥 Download Article",
+                    label="📥 Download Enriched Article",
                     data=final_text,
-                    file_name=f"{topic.lower().replace(' ', '_')}_article.md",
+                    file_name=f"{topic.lower().replace(' ', '_')}_advanced.md",
                     mime="text/markdown"
                 )
-                break # Exit the retry loop upon successful execution
+                break
                 
             except Exception as e:
                 error_msg = str(e)
-                
-                # Check if it's a Rate Limit / Token threshold error
                 if "rate_limit_exceeded" in error_msg.lower() or "ratelimiterror" in error_msg.lower():
-                    # Check if Groq told us exactly how long to wait via their API response
-                    # If not specified, we exponentially back off (5s, 15s, etc.)
-                    wait_time = retry_delay * (attempt + 1) * 2
+                    wait_time = 15.0
                     if "try again in" in error_msg:
                         try:
-                            # Try parsing the exact seconds out of Groq's error text (e.g., "try again in 3.27s")
                             parts = error_msg.split("try again in ")
-                            wait_time = float(parts[1].split("s")[0]) + 1.5 # Add a tiny padding buffer
+                            wait_time = float(parts[1].split("s")[0]) + 1.5
                         except:
                             pass
-                            
-                    status_box.warning(f"⏳ Groq rate limit threshold reached. Cooled down triggered: Waiting {wait_time:.2f} seconds before retrying...")
+                    status_box.warning(f"⏳ Dynamic Rate-limit pause triggered. Resuming in {wait_time:.1f}s...")
                     time.sleep(wait_time)
                 else:
-                    # If it's a different code error, stop execution immediately to debug
                     status_box.error(f"Execution Error: {e}")
                     break
         else:
-            status_box.error("❌ High traffic limit: Failed to execute after maximum cooling attempts. Please wait 1 minute before requesting another topic.")
+            status_box.error("❌ Failed to clear the server queue. Please try again in 1 minute.")
