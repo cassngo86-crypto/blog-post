@@ -80,24 +80,42 @@ def generate_docx(data: StructuredArticle):
 
 
 def generate_pdf(data: StructuredArticle):
-    """Generates a clean PDF document using fpdf2."""
+    """Generates a clean PDF document using fpdf2 with character-safe encoding."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Title (Unicode supported using standard core fonts)
+    # Helper function to sanitize text from tricky LLM markdown artifacts
+    def safe_encode(text):
+        if not text:
+            return ""
+        return (
+            text.replace("“", '"')
+                .replace("”", '"')
+                .replace("‘", "'")
+                .replace("’", "'")
+                .replace("—", "-")
+                .replace("–", "-")
+                .replace("•", "*")
+                .replace("**", "")
+                .replace("###", "")
+                .replace(">", "")
+        )
+
+    # Title
     pdf.set_font("Helvetica", "B", 18)
-    pdf.multi_cell(0, 10, data.title)
+    safe_title = safe_encode(data.title)
+    pdf.multi_cell(0, 10, safe_title)
     pdf.ln(10)
     
-    # Sections helper
+    # Sections rendering helper
     def add_pdf_section(heading, text):
         pdf.set_font("Helvetica", "B", 14)
         pdf.cell(0, 10, heading, ln=True)
         pdf.ln(2)
+        
         pdf.set_font("Helvetica", "", 11)
-        # Clean up potential markdown formatting characters for plain PDF display
-        clean_text = text.replace("**", "").replace("###", "").replace(">", "")
+        clean_text = safe_encode(text)
         pdf.multi_cell(0, 6, clean_text)
         pdf.ln(6)
 
@@ -106,6 +124,7 @@ def generate_pdf(data: StructuredArticle):
     add_pdf_section("Deep-Dive Content", data.body_sections_markdown)
     add_pdf_section("Conclusion", data.conclusion)
     
+    # Return byte string safely
     return pdf.output()
 
 
