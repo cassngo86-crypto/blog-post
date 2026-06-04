@@ -128,41 +128,52 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
 
     # --- TASKS ---
     # --- TASKS WITH ANCHORED SEARCH CONTROLS ---
-    # Automatically read the current year directly from the system calendar
+    # --- TASKS WITH ADVANCED FORMATTING BLUEPRINTS ---
     current_year = datetime.now().strftime("%Y")
 
     plan_description = (
         f"1. Identify trends, structural shifts, and key authoritative entities on {{topic}}.\n"
-        f"2. Create a clean article outline with clear structural requirements.\n"
-        f"3. CRITICAL SEARCH RULE: When searching for data on {{topic}}, you must target the **current year ({current_year})**.\n"
-        f"   Always prioritize official documentation, primary source sites, official corporate or government announcements, "
-        f"   and recent news articles published in {current_year}. Ignore outdated whitepapers, unverified forums, or third-party blogs."
+        f"2. Create a clean article outline highlighting where comparative tables or metric callouts would maximize readability.\n"
+        f"3. CRITICAL SEARCH RULE: When searching for data on {{topic}}, target the **current year ({current_year})**.\n"
+        f"   Always prioritize official documentation, primary source sites, and corporate/government announcements from {current_year}."
     )
 
     plan = Task(
         description=plan_description,
-        expected_output=(
-            f"An authoritative outline document backed exclusively by primary sources, official documentation, "
-            f"and verified data points from {current_year}."
-        ),
+        expected_output=f"An authoritative outline document with verified data notes from {current_year}.",
         agent=planner,
     )
 
     write = Task(
-        description=f"1. Convert the content plan into a blog post.\n2. Structure with markdown headers in a {tone_setting} voice.",
-        expected_output="A comprehensive markdown blog post where each section contains 2 or 3 detailed paragraphs.",
+        description=(
+            f"1. Convert the content plan into a premium article on {{topic}} in a {tone_setting} voice.\n"
+            f"2. VISUAL READABILITY RULES:\n"
+            f"   - Break long prose blocks by introducing a Markdown Table if comparing 2 or more entities (e.g., flight options, software tools, or patterns).\n"
+            f"   - Use Markdown Blockquotes (`>`) to emphasize critical takeaways, warnings, or expert metrics.\n"
+            f"   - Ensure each core section header contains exactly 2 to 3 well-paced paragraphs."
+        ),
+        expected_output="A visually engaging, magazine-ready blog post in markdown format with integrated tables and blockquotes.",
         agent=writer,
     )
 
     edit = Task(
-        description="Review and refine the blog post written by the writer for structural balance and grammar.",
+        description=(
+            "Review and refine the blog post. Ensure it meets journalistic standards, balances tone consistency, "
+            "and verifies that markdown tables or blockquotes are syntactically flawless."
+        ),
         expected_output="A polished version of the blog post in markdown format.",
         agent=editor
     )
 
     enrich_links = Task(
-        description="Locate official bodies or industry-standard platforms mentioned and add markdown links without altering core text text.",
-        expected_output="The complete markdown blog post containing navigation hyperlinks.",
+        description=(
+            "Locate official bodies, software repositories, tools, or major platforms mentioned in the text. "
+            "Convert these references into clickable Markdown hyperlinks. "
+            "SEO ANCHOR RULE: Do not link single words like '[Skyscanner]'. Instead, bind the link to context-aware descriptive "
+            "action phrases (e.g., '[compare flight routes via Skyscanner](https://www.skyscanner.com)' or '[review the official LangChain Framework](url)'). "
+            "Keep the core markdown tables, blockquotes, and text completely unaltered."
+        ),
+        expected_output="The final markdown blog post containing highly descriptive, context-anchored navigation hyperlinks.",
         agent=linker
     )
 
