@@ -6,6 +6,7 @@ import litellm
 from crewai import Agent, Task, Crew, LLM
 # 1. IMPORT THE SEARCH TOOL
 from crewai_tools import SerperDevTool
+from datetime import datetime
 
 # Disable warnings
 warnings.filterwarnings("ignore")
@@ -126,13 +127,24 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
     )
 
     # --- TASKS ---
-    plan_description = "1. Identify trends and recent facts on {topic}.\n2. Create a clean article outline."
-    if search_tool:
-        plan_description += "\n3. Use your search tool to gather the latest real-time news or data on this topic."
+    # --- TASKS WITH ANCHORED SEARCH CONTROLS ---
+    # Automatically read the current year directly from the system calendar
+    current_year = datetime.now().strftime("%Y")
+
+    plan_description = (
+        f"1. Identify trends, structural shifts, and key authoritative entities on {{topic}}.\n"
+        f"2. Create a clean article outline with clear structural requirements.\n"
+        f"3. CRITICAL SEARCH RULE: When searching for data on {{topic}}, you must target the **current year ({current_year})**.\n"
+        f"   Always prioritize official documentation, primary source sites, official corporate or government announcements, "
+        f"   and recent news articles published in {current_year}. Ignore outdated whitepapers, unverified forums, or third-party blogs."
+    )
 
     plan = Task(
         description=plan_description,
-        expected_output="An outline document with accompanying recent resource data notes.",
+        expected_output=(
+            f"An authoritative outline document backed exclusively by primary sources, official documentation, "
+            f"and verified data points from {current_year}."
+        ),
         agent=planner,
     )
 
