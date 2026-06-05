@@ -45,8 +45,6 @@ class StructuredArticle(BaseModel):
     conclusion: str = Field(description="Summarizing wrap-up section and a clear call to action.")
 
 
-# --- EXPORT HELPER FUNCTIONS ---
-
 # --- FIXED EXPORT HELPER FUNCTIONS ---
 
 def generate_docx(data: StructuredArticle):
@@ -143,9 +141,21 @@ st.title("🚀 Advanced Multi-Agent Content Crew")
 st.write("An enhanced system utilizing live web search, parameter tuning, and multi-format downloading.")
 
 # --- SIDEBAR CONTROL PANEL ---
+# --- SIDEBAR CONTROL PANEL ---
 st.sidebar.header("🔑 API Credentials")
-groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input("Groq API Key", type="password")
-serper_api_key = os.environ.get("SERPER_API_KEY") or st.sidebar.text_input("Serper API Key (For Live Search)", type="password")
+
+# 1. ALWAYS DECLARE INPUTS FIRST so they never disappear from the UI
+groq_api_key = os.environ.get("GROQ_API_KEY") or st.sidebar.text_input(
+    "Groq API Key", 
+    type="password",
+    value=os.environ.get("GROQ_API_KEY", "")
+)
+
+serper_api_key = os.environ.get("SERPER_API_KEY") or st.sidebar.text_input(
+    "Serper API Key (For Live Search)", 
+    type="password",
+    value=os.environ.get("SERPER_API_KEY", "")
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("🎛️ Generation Settings")
@@ -159,10 +169,10 @@ temperature = st.sidebar.slider(
     "LLM Creativity (Temperature)", min_value=0.0, max_value=1.0, value=0.7, step=0.1
 )
 
+# 2. RUN THE CONTROLS CHECK AFTER THE SIDEBAR COMPONENT MAP IS FULLY DRAWN
 if not groq_api_key:
-    st.info("🔑 Please enter your Groq API Key in the sidebar to begin.")
+    st.info("🔑 Please enter your Groq API Key in the sidebar to unlock the generation panel.")
     st.stop()
-
 
 # --- CACHED CREW EXECUTION FUNCTION ---
 @st.cache_data(show_spinner=False)
