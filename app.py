@@ -140,7 +140,7 @@ st.set_page_config(page_title="Advanced AI Content Crew", page_icon="🚀", layo
 st.title("🚀 Advanced Multi-Agent Content Crew")
 st.write("An enhanced system utilizing live web search, parameter tuning, and multi-format downloading.")
 
-# --- SIDEBAR CONTROL PANEL ---
+
 # --- SIDEBAR CONTROL PANEL ---
 st.sidebar.header("🔑 API Credentials")
 
@@ -155,6 +155,28 @@ serper_api_key = os.environ.get("SERPER_API_KEY") or st.sidebar.text_input(
     "Serper API Key (For Live Search)", 
     type="password",
     value=os.environ.get("SERPER_API_KEY", "")
+)
+
+# --- SIDEBAR CONTROL PANEL ---
+st.sidebar.header("🔑 API Credentials")
+
+# 1. Check environment variables quietly background first
+env_groq = os.environ.get("GROQ_API_KEY", "")
+env_serper = os.environ.get("SERPER_API_KEY", "")
+
+# 2. Force Streamlit to explicitly render the text inputs, using env keys as defaults
+groq_api_key = st.sidebar.text_input(
+    "Enter Groq API Key:", 
+    type="password",
+    value=env_groq,
+    key="groq_key_input_unique"
+)
+
+serper_api_key = st.sidebar.text_input(
+    "Enter Serper API Key (Optional):", 
+    type="password",
+    value=env_serper,
+    key="serper_key_input_unique"
 )
 
 st.sidebar.markdown("---")
@@ -258,7 +280,6 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
     return result.pydantic
 
 
-# --- MAIN INTERFACE ---
 # --- MAIN INTERFACE ---
 topic = st.text_input("What topic would you like the agents to handle today?", placeholder="e.g., Current Travel Trends Singapore to Tokyo")
 
