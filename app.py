@@ -47,45 +47,53 @@ class StructuredArticle(BaseModel):
 
 # --- EXPORT HELPER FUNCTIONS ---
 
+# --- FIXED EXPORT HELPER FUNCTIONS ---
+
 def generate_docx(data: StructuredArticle):
-    """Generates a styled Word document from the structured article object."""
+    """Generates a styled Word document cleanly buffered in memory."""
     doc = Document()
     
-    # Title
+    # Configure document typography
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(11)
+    
+    # Title Section
     title_p = doc.add_paragraph()
     title_run = title_p.add_run(data.title)
-    title_run.font.size = Pt(24)
+    title_run.font.size = Pt(22)
     title_run.font.bold = True
     
-    # Intro
+    # Introduction Section
     doc.add_heading("Introduction", level=1)
     doc.add_paragraph(data.introduction)
     
-    # Table (We add a placeholder notice or parse it, text is safest fallback for complex strings)
-    doc.add_heading("Comparative Analysis", level=1)
+    # Comparative Overview Section
+    doc.add_heading("Comparative Analysis & Key Resources", level=1)
     doc.add_paragraph(data.comparative_table_markdown)
     
-    # Body
+    # Deep-Dive Section
+    doc.add_heading("Deep-Dive Content Architecture", level=1)
     doc.add_paragraph(data.body_sections_markdown)
     
-    # Conclusion
+    # Conclusion Section
     doc.add_heading("Conclusion", level=1)
     doc.add_paragraph(data.conclusion)
     
-    # Save to byte stream
-    bio = BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio.getvalue()
+    # Use a secure in-memory bytes stream for Streamlit compatibility
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue() # Returns raw 'bytes'
 
 
 def generate_pdf(data: StructuredArticle):
-    """Generates a clean PDF document using fpdf2 with character-safe encoding."""
+    """Generates a clean PDF document, safely cast to standard bytes format."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Helper function to sanitize text from tricky LLM markdown artifacts
     def safe_encode(text):
         if not text:
             return ""
@@ -102,13 +110,12 @@ def generate_pdf(data: StructuredArticle):
                 .replace(">", "")
         )
 
-    # Title
+    # Render Document Title
     pdf.set_font("Helvetica", "B", 18)
     safe_title = safe_encode(data.title)
     pdf.multi_cell(0, 10, safe_title)
     pdf.ln(10)
     
-    # Sections rendering helper
     def add_pdf_section(heading, text):
         pdf.set_font("Helvetica", "B", 14)
         pdf.cell(0, 10, heading, ln=True)
@@ -124,8 +131,9 @@ def generate_pdf(data: StructuredArticle):
     add_pdf_section("Deep-Dive Content", data.body_sections_markdown)
     add_pdf_section("Conclusion", data.conclusion)
     
-    # Return byte string safely
-    return pdf.output()
+    # CRITICAL FIX: Convert the fpdf2 bytearray explicitly into a standard bytes object
+    raw_pdf_data = pdf.output()
+    return bytes(raw_pdf_data)
 
 
 # --- STREAMLIT UI & CONFIGURATIONS ---
