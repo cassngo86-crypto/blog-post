@@ -170,7 +170,12 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
     search_tool = None
     if _serper_key:
         os.environ["SERPER_API_KEY"] = _serper_key
-        search_tool = SerperDevTool()
+        
+        # We explicitly enforce the name and description strings to eliminate native fallback triggers
+        search_tool = SerperDevTool(
+            name="search_the_internet_with_serper",
+            description="A precise tool to look up current year news, official corporate documentation, or real-time data trends on Google."
+        )
 
     fast_llm = LLM(model="groq/llama-3.1-8b-instant", api_key=_groq_key, temperature=temp_setting)
     smart_llm = LLM(model="groq/llama-3.3-70b-versatile", api_key=_groq_key, temperature=temp_setting)
