@@ -264,10 +264,14 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
 
 
 # --- MAIN INTERFACE ---
+# --- MAIN INTERFACE ---
 topic = st.text_input("What topic would you like the agents to handle today?", placeholder="e.g., Current Travel Trends Singapore to Tokyo")
 
 if st.button("Launch Crew Execution", type="primary"):
-    if not topic.strip():
+    # 1. RUN THE VALIDATION CHECK *INSIDE* THE BUTTON CLICK EVENT
+    if not groq_api_key:
+        st.error("🔑 Groq API Key is missing! Please enter your key in the left sidebar to unlock execution.")
+    elif not topic.strip():
         st.warning("Please provide a valid topic.")
     else:
         status_box = st.empty()
@@ -317,7 +321,6 @@ if st.button("Launch Crew Execution", type="primary"):
                     )
                 
                 with col2:
-                    # Generate the Word Document binary on the fly
                     docx_data = generate_docx(article_data)
                     st.download_button(
                         label="📘 Download as Word (.docx)",
@@ -328,7 +331,6 @@ if st.button("Launch Crew Execution", type="primary"):
                     )
                     
                 with col3:
-                    # Generate the PDF binary on the fly
                     pdf_data = generate_pdf(article_data)
                     st.download_button(
                         label="📕 Download as PDF (.pdf)",
