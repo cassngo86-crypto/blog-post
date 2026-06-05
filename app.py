@@ -169,11 +169,6 @@ temperature = st.sidebar.slider(
     "LLM Creativity (Temperature)", min_value=0.0, max_value=1.0, value=0.7, step=0.1
 )
 
-# 2. RUN THE CONTROLS CHECK AFTER THE SIDEBAR COMPONENT MAP IS FULLY DRAWN
-if not groq_api_key:
-    st.info("🔑 Please enter your Groq API Key in the sidebar to unlock the generation panel.")
-    st.stop()
-
 # --- CACHED CREW EXECUTION FUNCTION ---
 @st.cache_data(show_spinner=False)
 def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
