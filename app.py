@@ -157,26 +157,21 @@ serper_api_key = os.environ.get("SERPER_API_KEY") or st.sidebar.text_input(
     value=os.environ.get("SERPER_API_KEY", "")
 )
 
+
 # --- SIDEBAR CONTROL PANEL ---
-st.sidebar.header("🔑 API Credentials")
+st.sidebar.header("🔑 Third-Party Tools")
 
-# 1. Check environment variables quietly background first
-env_groq = os.environ.get("GROQ_API_KEY", "")
-env_serper = os.environ.get("SERPER_API_KEY", "")
+# 1. Read the Groq key quietly from your system Secrets/Environment
+groq_api_key = os.environ.get("GROQ_API_KEY", "")
 
-# 2. Force Streamlit to explicitly render the text inputs, using env keys as defaults
-groq_api_key = st.sidebar.text_input(
-    "Enter Groq API Key:", 
-    type="password",
-    value=env_groq,
-    key="groq_key_input_unique"
-)
-
+# 2. Only show the Serper input textbox. 
+# Leaving value="" guarantees it stays empty on page load and does not save inputs by default.
 serper_api_key = st.sidebar.text_input(
-    "Enter Serper API Key (Optional):", 
+    "Enter Serper API Key (For Live Search):", 
     type="password",
-    value=env_serper,
-    key="serper_key_input_unique"
+    value="",
+    placeholder="Optional: Paste Serper.dev key here...",
+    key="serper_key_input_clean"
 )
 
 st.sidebar.markdown("---")
@@ -190,7 +185,6 @@ tone = st.sidebar.selectbox(
 temperature = st.sidebar.slider(
     "LLM Creativity (Temperature)", min_value=0.0, max_value=1.0, value=0.7, step=0.1
 )
-
 # --- CACHED CREW EXECUTION FUNCTION ---
 @st.cache_data(show_spinner=False)
 def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
@@ -284,13 +278,14 @@ def run_cached_crew(topic, tone_setting, temp_setting, _groq_key, _serper_key):
 topic = st.text_input("What topic would you like the agents to handle today?", placeholder="e.g., Current Travel Trends Singapore to Tokyo")
 
 if st.button("Launch Crew Execution", type="primary"):
-    # 1. RUN THE VALIDATION CHECK *INSIDE* THE BUTTON CLICK EVENT
+    # Validate that the system safely pulled your background Secrets key
     if not groq_api_key:
-        st.error("🔑 Groq API Key is missing! Please enter your key in the left sidebar to unlock execution.")
+        st.error("🔑 System Error: GROQ_API_KEY could not be found in your environment Secrets configuration.")
     elif not topic.strip():
         st.warning("Please provide a valid topic.")
     else:
         status_box = st.empty()
+        # ... Rest of your execution retry loop remains exactly the same ...
         max_retries = 3
         
         for attempt in range(max_retries):
